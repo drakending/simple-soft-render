@@ -12,19 +12,22 @@ DisplayWindow::DisplayWindow(QWidget *parent) : QWidget(parent)
 {
     width=700,height=700;
     pixelBuffer=new QColor[700*700];
-    for(int i=0;i<width;i++)
-    {
-        for(int j=0;j<height;j++)
-        {
-            pixelBuffer[i*height+j]=Qt::white;
-        }
-    }
+    zBuffer=new float[700*700];
     eye_fov=45;
     aspect_ratio=1;
     zNear=0.1;
     zFar=50;
     updateProjectionMatrix();
     modelMatrix=Eigen::Matrix4f::Identity();
+    mode=DisplayWindow::MODE::color;
+}
+static void computeBarycentric2D(float x, float y, const Eigen::Vector4f* v,float &a,float &b,float &c)
+{
+
+    a = (x*(v[1].y() - v[2].y()) + (v[2].x() - v[1].x())*y + v[1].x()*v[2].y() - v[2].x()*v[1].y()) / (v[0].x()*(v[1].y() - v[2].y()) + (v[2].x() - v[1].x())*v[0].y() + v[1].x()*v[2].y() - v[2].x()*v[1].y());
+    b = (x*(v[2].y() - v[0].y()) + (v[0].x() - v[2].x())*y + v[2].x()*v[0].y() - v[0].x()*v[2].y()) / (v[1].x()*(v[2].y() - v[0].y()) + (v[0].x() - v[2].x())*v[1].y() + v[2].x()*v[0].y() - v[0].x()*v[2].y());
+    c = (x*(v[0].y() - v[1].y()) + (v[1].x() - v[0].x())*y + v[0].x()*v[1].y() - v[1].x()*v[0].y()) / (v[2].x()*(v[0].y() - v[1].y()) + (v[1].x() - v[0].x())*v[2].y() + v[0].x()*v[1].y() - v[1].x()*v[0].y());
+
 }
 
 void DisplayWindow::clear()
@@ -34,6 +37,7 @@ void DisplayWindow::clear()
         for(int j=0;j<height;j++)
         {
             pixelBuffer[i*height+j]=Qt::white;
+            zBuffer[i*height+j]=-1000;
         }
     }
 }
@@ -58,6 +62,7 @@ void DisplayWindow::drawLine(Eigen::Vector3f &pointA, Eigen::Vector3f &pointB, Q
     auto y2 = pointB.y();
 
     QColor lineColor=color;
+
 
     int x,y,dx,dy,dx1,dy1,px,py,xe,ye,i;
 
@@ -151,31 +156,76 @@ void DisplayWindow::drawLine(Eigen::Vector3f &pointA, Eigen::Vector3f &pointB, Q
 
 void DisplayWindow::drawTriangle(Triangle &t)
 {
-    Eigen::Matrix4f trans=projectionMatrix*viewMatrix*modelMatrix;
-    Eigen::Vector4f v[]=
+    if(mode==DisplayWindow::MODE::grid)
     {
-        trans*toVec4(t.getX()),
-        trans*toVec4(t.getY()),
-        trans*toVec4(t.getZ())
-    };
-    for(auto& vec:v)
-    {
-        vec/=vec.w();
+        Eigen::Matrix4f trans=projectionMatrix*viewMatrix*modelMatrix;
+        Eigen::Vector4f v[]=
+        {
+            trans*toVec4(t.getX()),
+            trans*toVec4(t.getY()),
+            trans*toVec4(t.getZ())
+        };
+        for(auto& vec:v)
+        {
+            vec/=vec.w();
+        }
+        for(auto& vert:v)
+        {
+            vert.x()=0.5*width*(vert.x()+1.0);
+            vert.y()=0.5*height*(vert.y()+1.0);
+        }
+        Eigen::Vector3f v2[]=
+        {
+            toVec3(v[0]),
+            toVec3(v[1]),
+            toVec3(v[2])
+        };
+        drawLine(v2[0],v2[1]);
+        drawLine(v2[1],v2[2]);
+        drawLine(v2[2],v2[0]);
     }
-    for(auto& vert:v)
+    else if(mode==DisplayWindow::MODE::color)
     {
-        vert.x()=0.5*width*(vert.x()+1.0);
-        vert.y()=0.5*height*(vert.y()+1.0);
+        Eigen::Matrix4f trans=projectionMatrix*viewMatrix*modelMatrix;
+        Eigen::Vector4f v[]=
+        {
+            trans*toVec4(t.getX()),
+            trans*toVec4(t.getY()),
+            trans*toVec4(t.getZ())
+        };
+        for(auto& vec:v)
+        {
+            vec/=vec.w();
+        }
+        for(auto& vert:v)
+        {
+            vert.x()=0.5*width*(vert.x()+1.0);
+            vert.y()=0.5*height*(vert.y()+1.0);
+        }
+        QColor color;
+        color.setRgb((int)(t.getColor()[0]*255),(int)(t.getColor()[1]*255),(int)(t.getColor()[2]*255));
+        float l=std::min(std::min(v[0].x(),v[1].x()),v[2].x());
+        float r=std::max(std::max(v[0].x(),v[1].x()),v[2].x());
+        float b=std::min(std::min(v[0].y(),v[1].y()),v[2].y());
+        float u=std::max(std::max(v[0].y(),v[1].y()),v[2].y());
+        for(int x=(int)l;x<=ceil(r);++x)
+        {
+            for(int y=(int)b;y<=ceil(u);++y)
+            {
+                float alpha,beta,gamma;
+                computeBarycentric2D(x, y, v,alpha,beta,gamma);
+                float w_reciprocal = 1.0/(alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
+                float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
+                z_interpolated *= w_reciprocal;
+                if(insideTriangle(v,x+0.5,y+0.5)&&z_interpolated>=zBuffer[x*height+y])
+                {
+                    Eigen::Vector2f position(x,y);
+                    drawPoint(position,color);
+                    zBuffer[x*height+y]=z_interpolated;
+                }
+            }
+        }
     }
-    Eigen::Vector3f v2[]=
-    {
-        toVec3(v[0]),
-        toVec3(v[1]),
-        toVec3(v[2])
-    };
-    drawLine(v2[0],v2[1]);
-    drawLine(v2[1],v2[2]);
-    drawLine(v2[2],v2[0]);
 }
 
 void DisplayWindow::setEyePosition(Eigen::Vector3f &a)
@@ -206,6 +256,14 @@ void DisplayWindow::loadIndices(const std::vector<Eigen::Vector3f> &indices)
     for(int i=0;i<indices.size();i++)
     {
         this->indices.push_back(indices.at(i));
+    }
+}
+
+void DisplayWindow::loadColors(const std::vector<Eigen::Vector3f> &col)
+{
+    for(int i=0;i<col.size();i++)
+    {
+        colors.push_back(col.at(i));
     }
 }
 
@@ -253,6 +311,7 @@ void DisplayWindow::updateProjectionMatrix()
 
 void DisplayWindow::updateModelMatrix(float angle)
 {
+    angle=-angle;
     angle = angle/180.0f * PI;
     float c = cosf(angle),s = sinf(angle);
     modelMatrix << c, -s, 0, 0,
@@ -268,9 +327,15 @@ void DisplayWindow::render()
     for(int i=0;i<indices.size();i++)
     {
         Triangle t(position[indices.at(i).x()],position[indices.at(i).y()],position[indices.at(i).z()]);
+        t.setColor(colors[i]);
         drawTriangle(t);
     }
     update();
+}
+
+void DisplayWindow::setRenderMode(DisplayWindow::MODE in_mode)
+{
+    mode=in_mode;
 }
 
 
