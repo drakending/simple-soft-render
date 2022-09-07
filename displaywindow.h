@@ -24,12 +24,12 @@ private:
     std::vector<Eigen::Vector3f> indices;
     std::vector<Eigen::Vector3f> colors;
 
-
     float eye_fov,aspect_ratio,zNear,zFar;
 
     DisplayWindow::MODE mode;
 
 public:
+    std::vector<Triangle*> triangleList;
 
     explicit DisplayWindow(QWidget *parent = nullptr);
     void clear();
@@ -41,6 +41,7 @@ public:
     void setEyePosition(Eigen::Vector3f& a);
     void setView(Eigen::Vector3f&a);
     void setViewUp(Eigen::Vector3f&a);
+    void setMode(DisplayWindow::MODE in_mode);
 
     void loadPosition(const std::vector<Eigen::Vector3f> &positions);
     void loadIndices(const std::vector<Eigen::Vector3f>&indices);
@@ -59,5 +60,5 @@ protected:
 signals:
 
 };
-
+QColor vec2Col(Eigen::Vector3f & col);
 #endif // DISPLAYWINDOW_H

@@ -27,7 +27,7 @@
      <enum>Qt::NoFocus</enum>
     </property>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>770</x>
@@ -55,6 +55,19 @@
       </widget>
      </item>
     </layout>
+   </widget>
+   <widget class="QRadioButton" name="meshBtn">
+    <property name="geometry">
+     <rect>
+      <x>780</x>
+      <y>90</y>
+      <width>110</width>
+      <height>19</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>mesh</string>
+    </property>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">

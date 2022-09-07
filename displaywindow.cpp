@@ -203,7 +203,7 @@ void DisplayWindow::drawTriangle(Triangle &t)
             vert.y()=0.5*height*(vert.y()+1.0);
         }
         QColor color;
-        color.setRgb((int)(t.getColor()[0]*255),(int)(t.getColor()[1]*255),(int)(t.getColor()[2]*255));
+
         float l=std::min(std::min(v[0].x(),v[1].x()),v[2].x());
         float r=std::max(std::max(v[0].x(),v[1].x()),v[2].x());
         float b=std::min(std::min(v[0].y(),v[1].y()),v[2].y());
@@ -216,9 +216,13 @@ void DisplayWindow::drawTriangle(Triangle &t)
                 computeBarycentric2D(x, y, v,alpha,beta,gamma);
                 float w_reciprocal = 1.0/(alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
                 float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
+
+
                 z_interpolated *= w_reciprocal;
                 if(insideTriangle(v,x+0.5,y+0.5)&&z_interpolated>=zBuffer[x*height+y])
                 {
+                    Eigen::Vector3f col=alpha*t.getColor(0)+beta*t.getColor(1)+gamma*t.getColor(2);
+                    color=vec2Col(col);
                     Eigen::Vector2f position(x,y);
                     drawPoint(position,color);
                     zBuffer[x*height+y]=z_interpolated;
@@ -226,6 +230,7 @@ void DisplayWindow::drawTriangle(Triangle &t)
             }
         }
     }
+    return;
 }
 
 void DisplayWindow::setEyePosition(Eigen::Vector3f &a)
@@ -241,6 +246,11 @@ void DisplayWindow::setView(Eigen::Vector3f &a)
 void DisplayWindow::setViewUp(Eigen::Vector3f &a)
 {
     viewUp=a;
+}
+
+void DisplayWindow::setMode(DisplayWindow::MODE in_mode)
+{
+    mode=in_mode;
 }
 
 void DisplayWindow::loadPosition(const std::vector<Eigen::Vector3f> &positions)
@@ -290,48 +300,80 @@ void DisplayWindow::updateViewMatrix()
 
 void DisplayWindow::updateProjectionMatrix()
 {
-    float angle=eye_fov/180*PI;
-    float t=-zNear*std::tan(angle/2);
-    float r=t*aspect_ratio;
-    float b=-t,l=-r,n=zNear,f=zFar;
-    Eigen::Matrix4f ortho_m,ortho_r,ortho;
-    ortho_m=Eigen::Matrix4f::Identity();
-    ortho_m(0,3)=-(r+l)/2,ortho_m(1,3)=-(t+b)/2,ortho_m(2,3)=-(n+f)/2;
-    ortho_r=Eigen::Matrix4f::Identity();
-    ortho_r(0,0)=2/(r-l),ortho_r(1,1)=2/(t-b),ortho_r(2,2)=2/(n-f);
-    ortho=ortho_r*ortho_m;
-    Eigen::Matrix4f persp2Ortho;
-    persp2Ortho<<n,0,0,0
-                ,0,n,0,0
-                ,0,0,n+f,-n*f
-                ,0,0,1,0;
-    projectionMatrix=ortho*persp2Ortho;
 
+    float f, n, l, r, b, t, fov;
+    fov = eye_fov / 180 * PI;
+    n = -zNear; //znear是正值
+    f = -zFar;
+    t = tan(fov / 2) * zNear;
+    b = -t;
+    r = t * aspect_ratio;
+    l = -r;
+    //透视->正交 perspective->orthographic
+    Eigen::Matrix4f pertoorth;
+    pertoorth <<
+        n, 0, 0, 0,
+        0, n, 0, 0,
+        0, 0, n + f, -n * f,
+        0, 0, 1, 0;
+    //正交——移动
+    Eigen::Matrix4f orth1;
+    orth1 <<
+        1, 0, 0, -(r + l) / 2,
+        0, 1, 0, -(t + b) / 2,
+        0, 0, 1, -(n + f) / 2,
+        0, 0, 0, 1;
+    //正交——缩放
+    Eigen::Matrix4f orth2;
+    orth2 <<
+        2 / (r - l), 0, 0, 0,
+        0, 2 / (t - b), 0, 0,
+        0, 0, 2 / (n - f), 0,
+        0, 0, 0, 1;
+    //确保图象是正的，要对z轴进行反转
+    Eigen::Matrix4f mirror;
+    mirror <<
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, -1, 0,
+        0, 0, 0, 1;
+    projectionMatrix = mirror*orth2 * orth1 * pertoorth;//注意矩阵顺序，变换从右往左依次进行
 }
 
 void DisplayWindow::updateModelMatrix(float angle)
 {
-    angle=-angle;
-    angle = angle/180.0f * PI;
-    float c = cosf(angle),s = sinf(angle);
-    modelMatrix << c, -s, 0, 0,
-        s, c, 0, 0,
-        0, 0, 1, 0,
-        0, 0, 0, 1;
+    Eigen::Matrix4f rotation;
+    angle = angle * PI / 180.f;
+    rotation << cos(angle), 0, sin(angle), 0,
+                0, 1, 0, 0,
+                -sin(angle), 0, cos(angle), 0,
+                0, 0, 0, 1;
 
+    Eigen::Matrix4f scale;
+    scale << 2.5, 0, 0, 0,
+              0, 2.5, 0, 0,
+              0, 0, 2.5, 0,
+              0, 0, 0, 1;
+
+    Eigen::Matrix4f translate;
+    translate << 1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1;
+
+    modelMatrix= translate * rotation * scale;
 }
 
 void DisplayWindow::render()
 {
     clear();
-    for(int i=0;i<indices.size();i++)
+    for(auto t:triangleList)
     {
-        Triangle t(position[indices.at(i).x()],position[indices.at(i).y()],position[indices.at(i).z()]);
-        t.setColor(colors[i]);
-        drawTriangle(t);
+        drawTriangle(*t);
     }
     update();
 }
+
 
 void DisplayWindow::setRenderMode(DisplayWindow::MODE in_mode)
 {
@@ -354,4 +396,16 @@ void DisplayWindow::paintEvent(QPaintEvent *event)
             painter.drawRect(x,height-y-1,1,1);
         }
     }
+}
+
+QColor vec2Col(Eigen::Vector3f &col)
+{
+    QColor color;
+    for(int i=0;i<3;i++)
+    {
+        if(col(i)<0) col(i)=0;
+        else if(col[i]>1) col(i)=1;
+    }
+    color.setRgb(int(col.x()*255),int(col.y()*255),int(col.z()*255));
+    return color;
 }

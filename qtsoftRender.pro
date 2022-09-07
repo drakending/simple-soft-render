@@ -22,6 +22,7 @@ SOURCES += \
     triangle.cpp
 
 HEADERS += \
+    OBJ_Loader.h \
     displaywindow.h \
     eigen3/Eigen/Eigen \
     mainwindow.h \

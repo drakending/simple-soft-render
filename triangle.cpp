@@ -5,8 +5,9 @@ Triangle::Triangle()
     for(int i=0;i<3;i++)
     {
         vertex[i].x()=vertex[i].y()=vertex[i].z()=0;
+        color[i]<<0,0,0;
     }
-    color<<0,0,0;
+
 }
 
 Triangle::Triangle(Eigen::Vector3f& inx, Eigen::Vector3f &iny, Eigen::Vector3f &inz)
@@ -14,7 +15,7 @@ Triangle::Triangle(Eigen::Vector3f& inx, Eigen::Vector3f &iny, Eigen::Vector3f &
     vertex[0].x()=inx.x(),vertex[0].y()=inx.y(),vertex[0].z()=inx.z();
     vertex[1].x()=iny.x(),vertex[1].y()=iny.y(),vertex[1].z()=iny.z();
     vertex[2].x()=inz.x(),vertex[2].y()=inz.y(),vertex[2].z()=inz.z();
-    color<<0,0,0;
+
 }
 
 Eigen::Vector3f &Triangle::getX()
@@ -32,9 +33,19 @@ Eigen::Vector3f &Triangle::getZ()
     return vertex[2];
 }
 
-Eigen::Vector3f &Triangle::getColor()
+Eigen::Vector3f &Triangle::getColor(int i)
 {
-    return color;
+    return color[i];
+}
+
+Eigen::Vector2f &Triangle::getTexCoord(int i)
+{
+    return texCoord[i];
+}
+
+Eigen::Vector3f &Triangle::getNormal(int i)
+{
+    return normal[i];
 }
 
 Eigen::Vector3f &Triangle::operator[](int i)
@@ -42,11 +53,31 @@ Eigen::Vector3f &Triangle::operator[](int i)
     return vertex[i];
 }
 
-void Triangle::setColor(Eigen::Vector3f &x)
+void Triangle::setColor(Eigen::Vector3f &x, int i)
 {
-    color.x()=x.x();
-    color.y()=x.y();
-    color.z()=x.z();
+    color[i].x()=x.x();
+    color[i].y()=x.y();
+    color[i].z()=x.z();
+}
+
+void Triangle::setTexcoord(Eigen::Vector2f &x, int i)
+{
+    texCoord[i].x()=x.x();
+    texCoord[i].y()=x.y();
+}
+
+void Triangle::setNormal(Eigen::Vector3f &x, int i)
+{
+    normal[i].x()=x.x();
+    normal[i].y()=x.y();
+    normal[i].z()=x.z();
+}
+
+void Triangle::setVertex(Eigen::Vector3f &x, int i)
+{
+    vertex[i].x()=x.x();
+    vertex[i].y()=x.y();
+    vertex[i].z()=x.z();
 }
 
 
