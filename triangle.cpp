@@ -81,9 +81,9 @@ void Triangle::setVertex(Eigen::Vector3f &x, int i)
 }
 
 
-Eigen::Vector4f toVec4(Eigen::Vector3f &a)
+Eigen::Vector4f toVec4(Eigen::Vector3f &a,float i)
 {
-    return Eigen::Vector4f(a.x(),a.y(),a.z(),1.0);
+    return Eigen::Vector4f(a.x(),a.y(),a.z(),i);
 }
 
 Eigen::Vector3f toVec3(Eigen::Vector4f &a)
@@ -93,18 +93,16 @@ Eigen::Vector3f toVec3(Eigen::Vector4f &a)
 
 bool insideTriangle(Eigen::Vector4f _v[], double x, double y)
 {
-    Eigen::Vector3f p0p1(_v[0].x() - _v[1].x(), _v[0].y() - _v[1].y(),1.0f);
-    Eigen::Vector3f p1p2(_v[1].x() - _v[2].x(), _v[1].y() - _v[2].y(), 1.0f);
-    Eigen::Vector3f p2p0(_v[2].x() - _v[0].x(), _v[2].y() - _v[0].y(), 1.0f);
-
-    Eigen::Vector3f p0p(_v[0].x() - x, _v[0].y() - y, 1.0f);
-    Eigen::Vector3f p1p(_v[1].x() - x, _v[1].y() - y, 1.0f);
-    Eigen::Vector3f p2p(_v[2].x() - x, _v[2].y() - y, 1.0f);
-
-    if (p0p1.cross(p0p).z() > 0.f) {
-        return p1p2.cross(p1p).z() > 0.f && p2p0.cross(p2p).z() > 0.f;
-    }else {
-        return p1p2.cross(p1p).z() < 0.f && p2p0.cross(p2p).z() < 0.f;
-    }
+    Eigen::Vector3f v[3];
+    for(int i=0;i<3;i++)
+        v[i] = {_v[i].x(),_v[i].y(), 1.0};
+    Eigen::Vector3f f0,f1,f2;
+    f0 = v[1].cross(v[0]);
+    f1 = v[2].cross(v[1]);
+    f2 = v[0].cross(v[2]);
+    Eigen::Vector3f p(x,y,1.);
+    if((p.dot(f0)*f0.dot(v[2])>0) && (p.dot(f1)*f1.dot(v[0])>0) && (p.dot(f2)*f2.dot(v[1])>0))
+        return true;
+    return false;
 
 }

@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <math.h>
 #include <QDebug>
-
+#include <fragmentshader.h>
 #define PI 3.1415926
 
 DisplayWindow::DisplayWindow(QWidget *parent) : QWidget(parent)
@@ -16,18 +16,18 @@ DisplayWindow::DisplayWindow(QWidget *parent) : QWidget(parent)
     eye_fov=45;
     aspect_ratio=1;
     zNear=0.1;
+    size=3;
     zFar=50;
+    xOffset=yOffset=0;
     updateProjectionMatrix();
     modelMatrix=Eigen::Matrix4f::Identity();
     mode=DisplayWindow::MODE::color;
 }
 static void computeBarycentric2D(float x, float y, const Eigen::Vector4f* v,float &a,float &b,float &c)
 {
-
     a = (x*(v[1].y() - v[2].y()) + (v[2].x() - v[1].x())*y + v[1].x()*v[2].y() - v[2].x()*v[1].y()) / (v[0].x()*(v[1].y() - v[2].y()) + (v[2].x() - v[1].x())*v[0].y() + v[1].x()*v[2].y() - v[2].x()*v[1].y());
     b = (x*(v[2].y() - v[0].y()) + (v[0].x() - v[2].x())*y + v[2].x()*v[0].y() - v[0].x()*v[2].y()) / (v[1].x()*(v[2].y() - v[0].y()) + (v[0].x() - v[2].x())*v[1].y() + v[2].x()*v[0].y() - v[0].x()*v[2].y());
     c = (x*(v[0].y() - v[1].y()) + (v[1].x() - v[0].x())*y + v[0].x()*v[1].y() - v[1].x()*v[0].y()) / (v[2].x()*(v[0].y() - v[1].y()) + (v[1].x() - v[0].x())*v[2].y() + v[0].x()*v[1].y() - v[1].x()*v[0].y());
-
 }
 
 void DisplayWindow::clear()
@@ -37,7 +37,7 @@ void DisplayWindow::clear()
         for(int j=0;j<height;j++)
         {
             pixelBuffer[i*height+j]=Qt::white;
-            zBuffer[i*height+j]=-1000;
+            zBuffer[i*height+j]=-10000;
         }
     }
 }
@@ -156,6 +156,9 @@ void DisplayWindow::drawLine(Eigen::Vector3f &pointA, Eigen::Vector3f &pointB, Q
 
 void DisplayWindow::drawTriangle(Triangle &t)
 {
+    float f1 = (50 - 0.1) / 2.0;
+    float f2 = (50 + 0.1) / 2.0;
+
     if(mode==DisplayWindow::MODE::grid)
     {
         Eigen::Matrix4f trans=projectionMatrix*viewMatrix*modelMatrix;
@@ -173,6 +176,7 @@ void DisplayWindow::drawTriangle(Triangle &t)
         {
             vert.x()=0.5*width*(vert.x()+1.0);
             vert.y()=0.5*height*(vert.y()+1.0);
+            vert.z() = vert.z() * f1 + f2;
         }
         Eigen::Vector3f v2[]=
         {
@@ -184,9 +188,10 @@ void DisplayWindow::drawTriangle(Triangle &t)
         drawLine(v2[1],v2[2]);
         drawLine(v2[2],v2[0]);
     }
-    else if(mode==DisplayWindow::MODE::color)
+    else
     {
         Eigen::Matrix4f trans=projectionMatrix*viewMatrix*modelMatrix;
+        Eigen::Matrix4f mv=viewMatrix*modelMatrix;
         Eigen::Vector4f v[]=
         {
             trans*toVec4(t.getX()),
@@ -201,8 +206,27 @@ void DisplayWindow::drawTriangle(Triangle &t)
         {
             vert.x()=0.5*width*(vert.x()+1.0);
             vert.y()=0.5*height*(vert.y()+1.0);
+            vert.z() = vert.z() * f1 + f2;
         }
-        QColor color;
+
+        std::array<Eigen::Vector3f,3> viewSpace_pos;
+        for(int i=0;i<3;i++)
+        {
+            Eigen::Vector4f p=mv*toVec4(t.getX());
+            viewSpace_pos[i]=toVec3(p);
+        }
+
+        Eigen::Matrix4f inv_trans=(viewMatrix*modelMatrix).inverse().transpose();
+        Eigen::Vector4f n[]={
+            inv_trans*toVec4(t.getNormal(0),0),
+            inv_trans*toVec4(t.getNormal(1),0),
+            inv_trans*toVec4(t.getNormal(2),0)
+        };
+        Eigen::Vector3f a(148.0,121.0,92.0);
+        for(int i=0;i<3;i++)
+        {
+            t.setColor(a,i);
+        }
 
         float l=std::min(std::min(v[0].x(),v[1].x()),v[2].x());
         float r=std::max(std::max(v[0].x(),v[1].x()),v[2].x());
@@ -213,19 +237,24 @@ void DisplayWindow::drawTriangle(Triangle &t)
             for(int y=(int)b;y<=ceil(u);++y)
             {
                 float alpha,beta,gamma;
-                computeBarycentric2D(x, y, v,alpha,beta,gamma);
+                computeBarycentric2D(x+0.5, y+0.5, v,alpha,beta,gamma);
                 float w_reciprocal = 1.0/(alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
                 float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
-
-
                 z_interpolated *= w_reciprocal;
                 if(insideTriangle(v,x+0.5,y+0.5)&&z_interpolated>=zBuffer[x*height+y])
                 {
                     Eigen::Vector3f col=alpha*t.getColor(0)+beta*t.getColor(1)+gamma*t.getColor(2);
-                    color=vec2Col(col);
-                    Eigen::Vector2f position(x,y);
-                    drawPoint(position,color);
+                    Eigen::Vector4f normal4=(alpha*n[0]+beta*n[1]+gamma*n[2]).normalized();
+                    Eigen::Vector3f shadingCoord=alpha*viewSpace_pos[0]+beta*viewSpace_pos[1]+gamma*viewSpace_pos[2];
+                    Eigen::Vector2f texCoord=alpha*t.getTexCoord(0)+beta*t.getTexCoord(1)+gamma*t.getTexCoord(2);
+                    Eigen::Vector3f normal3=toVec3(normal4);
+                    normal3=normal3.normalized();
                     zBuffer[x*height+y]=z_interpolated;
+                    Eigen::Vector2f pos(x,y);
+                    payload pl(shadingCoord,normal3,col,pos,texCoord);
+                    Eigen::Vector3f color=fragmentShader(pl);
+                    QColor renCol=vec2Col(color);
+                    drawPoint(pos,renCol);
                 }
             }
         }
@@ -251,6 +280,16 @@ void DisplayWindow::setViewUp(Eigen::Vector3f &a)
 void DisplayWindow::setMode(DisplayWindow::MODE in_mode)
 {
     mode=in_mode;
+}
+
+void DisplayWindow::setFragmentShader(std::function<Eigen::Vector3f (payload&)> _fragmentShader)
+{
+    fragmentShader=_fragmentShader;
+}
+
+void DisplayWindow::setSize(float i)
+{
+    size=i;
 }
 
 void DisplayWindow::loadPosition(const std::vector<Eigen::Vector3f> &positions)
@@ -279,23 +318,12 @@ void DisplayWindow::loadColors(const std::vector<Eigen::Vector3f> &col)
 
 void DisplayWindow::updateViewMatrix()
 {
-    Eigen::Matrix4f a= Eigen::Matrix4f::Identity(4,4);
-    Eigen::Matrix4f b=Eigen::Matrix4f::Zero(4,4);
-    Eigen::Vector3f w=-view,u=(viewUp.cross(w)).normalized(),v=w.cross(u);
-    a(0,3)=-eyePosition.x();
-    a(1,3)=-eyePosition.y();
-    a(2,3)=-eyePosition.z();
-    for(int i=0;i<3;i++)
-    {
-        for(int j=0;j<3;j++)
-        {
-            if(i==0) b(i,j)=u(j);
-            else if(i==1) b(i,j)=v(j);
-            else if(i==2) b(i,j)=w(j);
-        }
-    }
-    b(3,3)=1;
-    viewMatrix=b*a;
+
+    viewMatrix << 1,0,0,-eyePosition[0],
+                 0,1,0,-eyePosition[1],
+                 0,0,1,-eyePosition[2],
+                 0,0,0,1;
+
 }
 
 void DisplayWindow::updateProjectionMatrix()
@@ -331,37 +359,37 @@ void DisplayWindow::updateProjectionMatrix()
         0, 0, 2 / (n - f), 0,
         0, 0, 0, 1;
     //确保图象是正的，要对z轴进行反转
-    Eigen::Matrix4f mirror;
-    mirror <<
-        1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, -1, 0,
-        0, 0, 0, 1;
-    projectionMatrix = mirror*orth2 * orth1 * pertoorth;//注意矩阵顺序，变换从右往左依次进行
+
+    projectionMatrix = orth2 * orth1 * pertoorth;//注意矩阵顺序，变换从右往左依次进行
 }
 
-void DisplayWindow::updateModelMatrix(float angle)
+void DisplayWindow::updateModelMatrix()
 {
-    Eigen::Matrix4f rotation;
-    angle = angle * PI / 180.f;
-    rotation << cos(angle), 0, sin(angle), 0,
+    Eigen::Matrix4f rotationY,rotationX;
+    float y = yAngle * PI / 180.f;
+    float x = xAngle * PI /180.f;
+    rotationY << cos(y), 0, sin(y), 0,
                 0, 1, 0, 0,
-                -sin(angle), 0, cos(angle), 0,
+                -sin(y), 0, cos(y), 0,
                 0, 0, 0, 1;
+    rotationX << 1,0,0,0,
+                 0,cos(x),-sin(x),0,
+                 0,sin(x),cos(x),0,
+                 0,0,0,1;
 
     Eigen::Matrix4f scale;
-    scale << 2.5, 0, 0, 0,
-              0, 2.5, 0, 0,
-              0, 0, 2.5, 0,
+    scale << size, 0, 0, 0,
+              0, size, 0, 0,
+              0, 0, size, 0,
               0, 0, 0, 1;
 
     Eigen::Matrix4f translate;
-    translate << 1, 0, 0, 0,
-            0, 1, 0, 0,
+    translate << 1, 0, 0, xOffset,
+            0, 1, 0, yOffset,
             0, 0, 1, 0,
             0, 0, 0, 1;
 
-    modelMatrix= translate * rotation * scale;
+    modelMatrix= translate * rotationX* rotationY * scale;
 }
 
 void DisplayWindow::render()
@@ -373,7 +401,6 @@ void DisplayWindow::render()
     }
     update();
 }
-
 
 void DisplayWindow::setRenderMode(DisplayWindow::MODE in_mode)
 {

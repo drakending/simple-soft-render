@@ -17,15 +17,19 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     displaywindow.cpp \
+    fragmentshader.cpp \
     main.cpp \
     mainwindow.cpp \
+    payload.cpp \
     triangle.cpp
 
 HEADERS += \
     OBJ_Loader.h \
     displaywindow.h \
     eigen3/Eigen/Eigen \
+    fragmentshader.h \
     mainwindow.h \
+    payload.h \
     triangle.h
 
 FORMS += \

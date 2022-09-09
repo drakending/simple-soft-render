@@ -331,8 +331,7 @@ namespace objl
             for (int i = 0; i < int(in.size()); i++)
             {
                 std::string test = in.substr(i, token.size());
-
-                if (test == token)
+                  if (test == token)
                 {
                     if (!temp.empty())
                     {

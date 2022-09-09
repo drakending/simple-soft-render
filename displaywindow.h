@@ -5,6 +5,7 @@
 #include <eigen3/Eigen/Eigen>
 #include "triangle.h"
 #include "vector"
+#include "payload.h"
 class DisplayWindow : public QWidget
 {
     Q_OBJECT
@@ -15,6 +16,9 @@ public:
 private:
     int width;
     int height;
+    float size;
+
+
     int windowY(int y);
     QColor* pixelBuffer;
     float * zBuffer;
@@ -23,12 +27,16 @@ private:
     std::vector<Eigen::Vector3f> position;
     std::vector<Eigen::Vector3f> indices;
     std::vector<Eigen::Vector3f> colors;
-
     float eye_fov,aspect_ratio,zNear,zFar;
 
     DisplayWindow::MODE mode;
 
+    std::function<Eigen::Vector3f(payload&)> fragmentShader;
+
 public:
+    float xOffset,yOffset;
+    float xAngle,yAngle,zAngle;
+
     std::vector<Triangle*> triangleList;
 
     explicit DisplayWindow(QWidget *parent = nullptr);
@@ -42,6 +50,8 @@ public:
     void setView(Eigen::Vector3f&a);
     void setViewUp(Eigen::Vector3f&a);
     void setMode(DisplayWindow::MODE in_mode);
+    void setFragmentShader(std::function<Eigen::Vector3f(payload&)>_fragmentShader);
+    void setSize(float i);
 
     void loadPosition(const std::vector<Eigen::Vector3f> &positions);
     void loadIndices(const std::vector<Eigen::Vector3f>&indices);
@@ -49,7 +59,7 @@ public:
 
     void updateViewMatrix();
     void updateProjectionMatrix();
-    void updateModelMatrix(float angle);
+    void updateModelMatrix();
 
     void render();
     void setRenderMode(DisplayWindow::MODE in_mode);

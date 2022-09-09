@@ -24,10 +24,10 @@ public:
 private:
     Eigen::Vector3f vertex[3];
     Eigen::Vector3f color[3];
-    Eigen::Vector2f texCoord[2];
+    Eigen::Vector2f texCoord[3];
     Eigen::Vector3f normal[3];
 };
-Eigen::Vector4f toVec4(Eigen::Vector3f & a);
+Eigen::Vector4f toVec4(Eigen::Vector3f &a,float i=1.0f);
 
 Eigen::Vector3f toVec3(Eigen::Vector4f & a);
 
